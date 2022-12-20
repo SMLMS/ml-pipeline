@@ -1,0 +1,218 @@
+---
+title: "Analyze fits"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(caret)
+library(plyr)
+library(dplyr)
+library(data.table) 
+
+# R-squared correct version
+getRsq = function(y.model, y.data){
+  1 - (sum((y.model - y.data)**2) / sum((y.data - mean(y.data))**2))}
+
+```
+
+# load test and train
+
+```{r, data}
+
+# main data file
+file.data = './example_data/data.mtcars.csv'
+df.data = read.csv(file.data, row.names = 1)
+
+# load config file
+# TODO: quick fix to get specific parms, will be replaced
+file.config = './example_data/config.example.json'
+config = rjson::fromJSON(file = file.config)
+
+# samples for validation data
+# TODO: get from config files
+file.samples.train = './example_data/samples.mtcars.train.txt'
+list.samples.train = read.csv(file.samples.train, header = F)$V1
+
+# samples for validation data
+# TODO: get from config files
+file.samples.test = list(
+  test_001='./example_data/samples.mtcars.test_001.txt',
+  test_002='./example_data/samples.mtcars.test_002.txt')
+list.samples.test = lapply(file.samples.test, function(x)
+  read.csv(x, header = F)$V1)
+
+```
+
+# reference RMSE
+
+```{r, reference RMSE}
+
+# reference RMSE
+# FIXME: how to implement a more general solution?
+response = 'mpg'
+df.rmse.ref = data.table(
+    response = response,
+    train = RMSE(
+      mean(df.data[list.samples.train, response]), 
+      df.data[list.samples.train, response]),
+    test = RMSE(
+      mean(df.data[list.samples.test$test_001, response]),
+      df.data[list.samples.test$test_001, response]))
+
+```
+
+# load fits
+
+```{r, load fits}
+
+# load fits
+files.rds = list.files('./fits/', pattern = '.rds', full.names = F)
+list.fits = lapply(files.rds, function(x)
+  readRDS(paste0('./fits/', x))) %>%
+  magrittr::set_names(gsub('[.]rds', '', files.rds))
+
+# load metadata
+df.fits = lapply(files.rds, function(x)
+  fread(paste0('./fits/', gsub('rds', 'log', x)), header=F) %>%
+    data.frame() %>%
+    tibble::column_to_rownames('V1') %>%
+    t %>%
+    data.table) %>%
+  bind_rows() %>%
+  dplyr::rename(fitID = name.out)
+
+```
+
+```{r, RMSE on CV}
+
+# RMSE CV on training data
+df.rmse.cv = lapply(list.fits, function(x)
+  x$resample) %>%
+  bind_rows(.id='fitID') %>%
+  merge(df.fits, by='fitID', all.x=T) %>%
+  data.table
+
+# mean RMSE train
+df.rmse.cv.mean = df.rmse.cv %>%
+  group_by(fitID) %>%
+  summarise(RMSEtrain = mean(RMSE)) %>%
+  data.table
+
+# RMSE and R2 test
+# TODO: run on multiple testing data instances
+df.rmse.summary = lapply(names(list.fits), function(x){
+  print(x)
+  dim.train = dim(list.fits[[x]]$trainingData)
+  features = colnames(list.fits[[x]]$trainingData)[1:dim.train[2]-1]
+  y.model = predict(list.fits[[x]], df.data[list.samples.test$test_001, features, drop=F])
+  ml.response = df.fits[fitID == x, ml.response]
+  data.table(
+    fitID = x,
+    RMSEtest = RMSE(y.model, df.data[list.samples.test$test_001, ml.response]),
+    R2test = getRsq(y.model, df.data[list.samples.test$test_001, ml.response]))
+  }) %>%
+  bind_rows() %>%
+  merge(df.rmse.cv.mean, by='fitID', all=T) %>%
+  merge(df.fits, by='fitID', all=T)
+
+```
+
+
+```{r, plotting}
+
+# response
+plot.response = 'mpg'
+
+# fits to show in plots
+fits.show = df.fits %>%
+  .$fitID
+
+# ordering
+lvls = df.rmse.summary %>%
+  dplyr::filter(fitID %in% fits.show) %>%
+  arrange(RMSEtrain) %>%
+  .$fitID
+
+# plot RMSE on CV
+df.rmse.cv %>%
+  dplyr::filter(fitID %in% fits.show) %>%
+  mutate(fitID = factor(fitID, levels=lvls)) %>%
+  ggplot() +
+  aes(x=fitID, y=RMSE, fill=ml.method) +
+  geom_boxplot() +
+  geom_jitter(height = 0, width = 0.1) +
+  geom_hline(
+    data=df.rmse.ref %>% dplyr::filter(response == plot.response), 
+    aes(yintercept = train),
+    linetype='dashed') +
+  theme(
+    legend.position = 'none',
+    axis.text.x = element_text(angle=90, hjust = 1, vjust = 0.5),
+    axis.title.x = element_blank())
+
+# time
+df.fits %>%
+  dplyr::filter(fitID %in% fits.show) %>%
+  mutate(fitID = factor(fitID, levels=lvls)) %>%
+  mutate(ml.run_time_min = as.numeric(ml.run_time) / 60) %>%
+  ggplot() +
+  aes(x=fitID, y=ml.run_time_min, fill=ml.method) +
+  geom_bar(stat='identity') +
+  theme(
+    legend.position = 'none',
+    axis.text.x = element_text(angle=90, hjust = 1, vjust = 0.5),
+    axis.title.x = element_blank())
+
+
+```
+
+```{r, plotting test}
+
+# ordering
+lvls = df.rmse.summary %>%
+  dplyr::filter(fitID %in% fits.show) %>%
+  arrange(RMSEtest) %>%
+  .$fitID
+
+# RMSE test
+df.rmse.summary %>%
+  dplyr::filter(fitID %in% fits.show) %>%
+  mutate(fitID = factor(fitID, levels = lvls)) %>%
+ggplot() +
+  aes(x=fitID, y=RMSEtest, fill=ml.method) +
+  geom_bar(stat='identity') +
+  geom_hline(
+    data=df.rmse.ref %>% dplyr::filter(response == plot.response), 
+    aes(yintercept = test),
+    linetype='dashed') +
+  theme(
+    legend.position = 'none',
+    axis.text.x = element_text(angle=90, hjust = 1, vjust = 0.5),
+    axis.title.x = element_blank())
+
+# R2 test
+df.rmse.summary %>%
+  dplyr::filter(fitID %in% fits.show) %>%
+  mutate(fitID = factor(fitID, levels = lvls)) %>%
+ggplot() +
+  aes(x=fitID, y=R2test, fill=ml.method) +
+  geom_bar(stat='identity') +
+  ylim(NA, 1) +
+  theme(
+    legend.position = 'none',
+    axis.text.x = element_text(angle=90, hjust = 1, vjust = 0.5))
+
+```
+
+## Reproducibility
+
+```{r}
+date()
+```
+
+```{r}
+sessionInfo()
+```
