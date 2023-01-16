@@ -8,17 +8,21 @@ args = commandArgs(trailingOnly=TRUE)
 
 # read config file
 config = rjson::fromJSON(file = args[1])
-#config = rjson::fromJSON(file = './example_data/config.example.json')
+config = rjson::fromJSON(file = './example_data/config.example.json')
 
 # grids
+# TODO: The grid library will be replaced by the dials package
 source(config$ml.cv$grid.library)
 
 # output
+# TODO: find out how relative paths work with nf
 file.rds = paste0('./fits/', config$fit.id, '.rds')
 file.log = paste0('./fits/', config$fit.id, '.log')
 
 # data
-df.data = read.csv(config$file.data, row.names = 1)
+# NOTE: using fread because it's faster
+df.data = data.table::fread(config$file.data) %>%
+  tibble::column_to_rownames('V1')
 
 # samples
 list.samples = read.csv(config$file.samples.train, header = F)$V1
@@ -26,21 +30,33 @@ list.samples = read.csv(config$file.samples.train, header = F)$V1
 # features
 list.features = read.csv(config$file.features, header = F)$V1
 
-# response
-response = config$ml.response
+# format response variable
+if (config$ml.type == 'classification'){
+  y = as.factor(df.data[list.samples, config$ml.response])
+} else if (config$ml.type == 'regression') {
+  y = as.numeric(df.data[list.samples, config$ml.response])
+} else {
+  stop("ml.type must be of 'classification', 'regression'")
+}
 
-# fit model
+# set up trainControl
+# TODO: implement other methods such as jackknife, bootstrap, ...
+trControl = caret::trainControl(
+  method = config$ml.cv$method, 
+  number = as.numeric(config$ml.cv$fold), 
+  repeats = as.numeric(config$ml.cv$repeats))
+
+# train model
 set.seed(as.numeric(config$ml.seed))
 cv_model = caret::train(
-  y = df.data[list.samples, response], 
+  y = y, 
   x = df.data[list.samples, list.features, drop=F], 
   method = config$ml.method,
-  preProcess = eval(parse(text = config$ml.preprocess)),
-  trControl = caret::trainControl(
-    method = config$ml.cv$method, 
-    number = as.numeric(config$ml.cv$fold), 
-    repeats = as.numeric(config$ml.cv$repeats)),
-  tuneGrid = list.grids[[config$ml.cv$tune.grid]])
+  preProcess = config$ml.preprocess,
+  trControl = trControl,
+  tuneGrid = list.grids[[config$ml.cv$tune.grid]], # NOTE: if NULL tuneLength is used
+  tuneLength = config$ml.cv$tune.length
+  )
 
 # ml run time
 ml.run_time = 

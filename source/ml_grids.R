@@ -1,5 +1,7 @@
 
 list.grids = list(
+  # if tuneLength is used instead of tuneGrid
+  none = NULL,
   # pcr
   pcr_v001 = expand.grid(
     ncomp = seq(1:50)),
