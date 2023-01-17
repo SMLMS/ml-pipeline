@@ -71,6 +71,7 @@ write.table(t(
     file.samples.train = config$file.samples.train,
     file.features = config$file.features,
     ml.seed = config$ml.seed,
+    ml.type = config$ml.type,
     ml.method = config$ml.method,
     ml.response = config$ml.response,
     ml.preProcess = config$ml.preprocess,
