@@ -10,9 +10,10 @@ args = commandArgs(trailingOnly=TRUE)
 config = rjson::fromJSON(file = args[1])
 config = rjson::fromJSON(file = './example_data/config.example.json')
 
-# grids
+# sources
 # TODO: The grid library will be replaced by the dials package
 source(config$ml.cv$grid.library)
+source('./ml_funcs.R')
 
 # output
 # TODO: find out how relative paths work with nf
@@ -30,15 +31,6 @@ list.samples = read.csv(config$file.samples.train, header = F)$V1
 # features
 list.features = read.csv(config$file.features, header = F)$V1
 
-# format response variable
-if (config$ml.type == 'classification'){
-  y = as.factor(df.data[list.samples, config$ml.response])
-} else if (config$ml.type == 'regression') {
-  y = as.numeric(df.data[list.samples, config$ml.response])
-} else {
-  stop("ml.type must be of 'classification', 'regression'")
-}
-
 # set up trainControl
 # TODO: implement other methods such as jackknife, bootstrap, ...
 trControl = caret::trainControl(
@@ -49,7 +41,7 @@ trControl = caret::trainControl(
 # train model
 set.seed(as.numeric(config$ml.seed))
 cv_model = caret::train(
-  y = y, 
+  y = format_y(df.data[list.samples, config$ml.response], config$ml.type), 
   x = df.data[list.samples, list.features, drop=F], 
   method = config$ml.method,
   preProcess = config$ml.preprocess,
