@@ -108,30 +108,30 @@ main = function(){
   
   # read data
   data_df <- data.table::fread(config_inst$file.data) %>%
-    tibble::column_to_rownames(config_inst$sample.id) %>%
+    tibble::column_to_rownames(config_inst$ml.sampleID) %>%
     as.data.frame()
   
   # read samples
   samples_lst <- read.csv(config_inst$file.samples.train, header = FALSE)$V1
   
   # read features
-  predictive_features_lst <- read.csv(config_inst$file.features.predictive, header = FALSE)$V1
-  trivial_features_lst <- read.csv(config_inst$file.features.trivial, header = FALSE)$V1
-  complete_features_lst <- append(predictive_features_lst, trivial_features_lst)
-  n_features <- length(predictive_features_lst)
+  train_features_lst <- read.csv(config_inst$file.features.train, header = FALSE)$V1
+  resample_features_lst <- read.csv(config_inst$file.features.resample, header = FALSE)$V1
+  complete_features_lst <- append(train_features_lst, resample_features_lst)
+  n_features <- length(train_features_lst)
   
   # filter data
   filtered_df <- switch (parser_inst$method,
     'none' = {
       data_df[samples_lst,] %>%
         dplyr::mutate(!!as.symbol(config_inst$ml.response) := format_y(!!as.symbol(config_inst$ml.response), config_inst$ml.type)) %>%
-        dplyr::select(dplyr::all_of(append(predictive_features_lst, config_inst$ml.response))) %>%
+        dplyr::select(dplyr::all_of(append(train_features_lst, config_inst$ml.response))) %>%
         return()
       },
     'response' = {
       data_df[samples_lst,] %>%
         dplyr::mutate(!!as.symbol(config_inst$ml.response) := format_y(!!as.symbol(config_inst$ml.response), config_inst$ml.type)) %>%
-        dplyr::select(dplyr::all_of(append(predictive_features_lst, config_inst$ml.response))) %>%
+        dplyr::select(dplyr::all_of(append(train_features_lst, config_inst$ml.response))) %>%
         return()
     },
     'features' = {
@@ -184,8 +184,8 @@ main = function(){
       name.out = config_inst$fit.id,
       file.data = config_inst$file.data,
       file.samples.train = config_inst$file.samples.train,
-      file.features.predictive = config_inst$file.features.predictive,
-      file.features.trivial = config_inst$file.features.trivial,
+      file.features.train = config_inst$file.features.train,
+      file.features.resample = config_inst$file.features.resample,
       ml.model = path_to_model,
       ml.seed = config_inst$ml.seed,
       ml.type = config_inst$ml.type,
