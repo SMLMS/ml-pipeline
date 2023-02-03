@@ -8,7 +8,7 @@ args = commandArgs(trailingOnly=TRUE)
 
 # read config file
 config = rjson::fromJSON(file = args[1])
-config = rjson::fromJSON(file = './example_data/config.example.json')
+#config = rjson::fromJSON(file = './example_data/config.example.regression.json')
 
 # source
 source('./ml_funcs.R')
@@ -20,10 +20,10 @@ cv_model = read_rds(file.rds)
 # data
 # NOTE: using fread because it's faster
 df.data = data.table::fread(config$file.data) %>%
-  tibble::column_to_rownames('V1')
+  tibble::column_to_rownames(config$ml.sampleID)
 
 # features
-list.features = setdiff(colnames(cv_model$trainingData), ".outcome")
+list.features = colnames(cv_model$trainingData)[-ncol(cv_model$trainingData)]
 
 # prepare list with test samples
 list.test = lapply(config$list.samples.test, function(x)

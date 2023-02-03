@@ -8,7 +8,7 @@ args = commandArgs(trailingOnly=TRUE)
 
 # read config file
 config = rjson::fromJSON(file = args[1])
-config = rjson::fromJSON(file = './example_data/config.example.json')
+#config = rjson::fromJSON(file = './example_data/config.example.regression.json')
 
 # sources
 # TODO: The grid library will be replaced by the dials package
@@ -23,13 +23,13 @@ file.log = paste0('./fits/', config$fit.id, '.log')
 # data
 # NOTE: using fread because it's faster
 df.data = data.table::fread(config$file.data) %>%
-  tibble::column_to_rownames('V1')
+  tibble::column_to_rownames(config$ml.sampleID)
 
 # samples
 list.samples = read.csv(config$file.samples.train, header = F)$V1
 
 # features
-list.features = read.csv(config$file.features, header = F)$V1
+list.features = read.csv(config$file.features.train, header = F)$V1
 
 # set up trainControl
 # TODO: implement other methods such as jackknife, bootstrap, ...
@@ -61,7 +61,8 @@ write.table(t(
     name.out = config$fit.id,
     file.data = config$file.data,
     file.samples.train = config$file.samples.train,
-    file.features = config$file.features,
+    file.features.train = config$file.features.train,
+    ml.sampleID = config$ml.sampleID,
     ml.seed = config$ml.seed,
     ml.type = config$ml.type,
     ml.method = config$ml.method,
