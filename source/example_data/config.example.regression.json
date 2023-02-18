@@ -1,9 +1,9 @@
 {
     "fit.id": "testFitRegression",
-    "file.data": "./example_data/data.mtcars.csv",
-    "file.features.train": "./example_data/features.mtcars.txt",
+    "file.data": "~/Code/ml-pipeline/source/example_data/data.mtcars.csv",
+    "file.features.train": "~/Code/ml-pipeline/source/example_data/features.mtcars.txt",
     "file.features.resample": null,
-    "file.samples.train": "./example_data/samples.mtcars.train.txt",
+    "file.samples.train": "~/Code/ml-pipeline/source/example_data/samples.mtcars.train.txt",
     "ml.sampleID": "sampleId",
     "ml.type": "regression",
     "ml.response": "mpg",
@@ -14,7 +14,7 @@
       "method": "repeatedcv",
       "fold": "5",
       "repeats": "10",
-      "grid.library": "./ml_grids.R",
+      "grid.library": null,
       "tune.grid": "none",
       "tune.length": "10"
     },

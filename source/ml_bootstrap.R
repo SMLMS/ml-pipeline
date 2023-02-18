@@ -22,6 +22,8 @@ option_list = list(
               help="config file name", metavar="character"),
   make_option(c("-m", "--method"), type="character", default="none", 
                help="method of permutation. Options are (none, features, response). [default= %default]", metavar="character"),
+  make_option(c("-t", "--trained"), type="character", default = NULL,
+              help = "trained caret object (*.rds).", metavar="character"),
   make_option(c("-c", "--cores"), type="integer", default=1, 
               help="available cores for multi-processing [default= %default]", metavar="character")
 )
@@ -103,8 +105,7 @@ main = function(){
   config_inst <- rjson::fromJSON(file = parser_inst$file)
   
   # read model
-  path_to_model <- paste0('./fits/', config_inst$fit.id, '.rds')
-  model_inst <- read_rds(path_to_model)
+  model_inst <- readRDS(file = parser_inst$trained)
   
   # read data
   data_df <- data.table::fread(config_inst$file.data) %>%
@@ -116,7 +117,10 @@ main = function(){
   
   # read features
   train_features_lst <- read.csv(config_inst$file.features.train, header = FALSE)$V1
-  resample_features_lst <- read.csv(config_inst$file.features.resample, header = FALSE)$V1
+  resample_features_lst <- c()
+  if(parser_inst$method == "features"){
+    resample_features_lst <- read.csv(config_inst$file.features.resample, header = FALSE)$V1
+  }
   complete_features_lst <- append(train_features_lst, resample_features_lst)
   n_features <- length(train_features_lst)
   
@@ -143,23 +147,21 @@ main = function(){
     stop(sprintf("Resampling method %s is unknown. Needs to be none, features or response.", parser_inst$method))
   )
 
+  
   # run permutation experiment
   bootstrap_df <- tibble::tibble(permutations = seq(as.integer(config_inst$ml.bootstrap$n.permutations)), seed = as.integer(config_inst$ml.seed) + seq(as.integer(config_inst$ml.bootstrap$n.permutations))) %>%
     dplyr::mutate(permutation_type = parser_inst$method) %>%
     dplyr::mutate(resample_obj = furrr::future_map(.options = furrr::furrr_options(seed = TRUE), .x = seed, .f = purrr::possibly(.f = create_resample_experiment, otherwise = NULL), filtered_df, parser_inst,  model_inst, config_inst, n_features)) %>%
     dplyr::mutate(metrics = purrr::map(.x = resample_obj, .f = purrr::possibly(.f = function(x){x$metrics_df}, otherwise = NULL))) %>%
     dplyr::mutate(confusion = purrr::map(.x = resample_obj, .f = purrr::possibly(.f = function(x){x$confusion_df}, otherwise = NULL)))
-
-
+  
   # write metrics
   metrics_df <- bootstrap_df %>%
     dplyr::select(permutation_type, permutations, seed, metrics) %>%
     tidyr::unnest(metrics)
 
-
-  print(head(metrics_df))
-
-  path_to_metrics_file <- sprintf("./fits/%s_permute_%s_bootstrap_metrics.csv", config_inst$fit.id,  parser_inst$method)
+  # This result will go to the multiQC section
+  path_to_metrics_file <- sprintf("./%s_permute_%s_bootstrap_metrics.csv", config_inst$fit.id,  parser_inst$method)
   readr::write_csv(metrics_df, path_to_metrics_file)
 
 
@@ -168,8 +170,8 @@ main = function(){
     confusion_df <- bootstrap_df %>%
       dplyr::select(permutation_type, permutations, seed, confusion) %>%
       tidyr::unnest(confusion)
-
-    path_to_confusion_file <- sprintf("./fits/%s_permute_%s_bootstrap_confusion.csv", config_inst$fit.id,  parser_inst$method)
+    # This result will go to the multiQC section
+    path_to_confusion_file <- sprintf("./%s_permute_%s_bootstrap_confusion.csv", config_inst$fit.id,  parser_inst$method)
     readr::write_csv(confusion_df, path_to_confusion_file)
   }
   
@@ -178,27 +180,28 @@ main = function(){
   run_time = end_time - start_time
   
   # save experimental conditions
-  file.log = sprintf("./fits/%s_permute_%s_bootstrap.log", config_inst$fit.id,  parser_inst$method)
-  write.table(t(
-    data.frame(
-      name.out = config_inst$fit.id,
-      file.data = config_inst$file.data,
-      file.samples.train = config_inst$file.samples.train,
-      file.features.train = config_inst$file.features.train,
-      file.features.resample = config_inst$file.features.resample,
-      ml.model = path_to_model,
-      ml.seed = config_inst$ml.seed,
-      ml.type = config_inst$ml.type,
-      ml.method = config_inst$ml.method,
-      ml.response = config_inst$ml.response,
-      ml.preProcess = config_inst$ml.preprocess,
-      boot.permutation.method = parser_inst$method,
-      boot.n.resamples = config_inst$ml.bootstrap$n.resamples,
-      boot.n.permutations = config_inst$ml.bootstrap$n.permutations,
-      boot.n.cores = parser_inst$cores,
-      boot.run_time = sprintf("%.3f", run_time),
-      note.log = config_inst$note)),
-    file.log, row.names = TRUE, quote = FALSE, col.names = FALSE, sep='\t')
+  # may be redundant, same as log in ml_train
+  file.log = sprintf("./%s_permute_%s_bootstrap.log", config_inst$fit.id,  parser_inst$method)
+  data.frame(
+    name.out = config_inst$fit.id,
+    file.data = config_inst$file.data,
+    file.samples.train = config_inst$file.samples.train,
+    file.features.train = config_inst$file.features.train,
+    file.features.resample = dplyr::if_else(is.null(config_inst$file.features.resample), "null", config_inst$file.features.resample),
+    ml.model = parser_inst$trained,
+    ml.seed = config_inst$ml.seed,
+    ml.type = config_inst$ml.type,
+    ml.method = config_inst$ml.method,
+    ml.response = config_inst$ml.response,
+    ml.preProcess = stringr::str_flatten(config_inst$ml.preprocess, collapse = "; "),
+    boot.permutation.method = parser_inst$method,
+    boot.n.resamples = config_inst$ml.bootstrap$n.resamples,
+    boot.n.permutations = config_inst$ml.bootstrap$n.permutations,
+    boot.n.cores = parser_inst$cores,
+    boot.run_time = sprintf("%.3f", run_time),
+    note.log = config_inst$note) %>%
+    t() %>%
+    write.table(file.log, row.names = TRUE, quote = FALSE, col.names = FALSE, sep='\t')
 
   # closing remarks
   cat(sprintf("\n\nRan bootstrap experiment with permutation type %s in %.3f seconds on %i cores.\n%s\n", parser_inst$method, run_time, parser_inst$cores, config_inst$note))
