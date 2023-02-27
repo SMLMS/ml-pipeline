@@ -3,6 +3,7 @@ library("rjson")
 library("tidyverse")
 library("caret")
 library("fastshap")
+library("vip")
 source("./ml_funcs.R")
 
 #' @name create_parser
