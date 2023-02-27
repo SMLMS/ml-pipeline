@@ -23,6 +23,12 @@
       "n.permutations": "100",
       "strata.var": "NULL"
     },
+    "ml.importance":{
+      "n.repeats": "100"
+    },
+    "ml.shap":{
+      "n.repeats": "100"
+    },
     "list.samples.test": [],
     "note": "I like machine learning"
   }
